@@ -10,7 +10,7 @@ class AISummarizer:
         self.groq_key = groq_key
         self.groq_model = groq_model
 
-    def summarize(self, commits: list[dict], repo: str) -> list[dict]:
+    def summarize(self, commits: list[dict], repo: str, mode: str = "short") -> list[dict]:
         if not commits:
             return []
 
@@ -18,10 +18,12 @@ class AISummarizer:
         summaries = []
 
         for group in grouped:
-            if self.provider == "gemini":
-                summary = self._summarize_with_gemini(group, repo)
+            if mode == "full":
+                summary = self._full_summary(group, repo)
+            elif self.provider == "gemini":
+                summary = self._summarize_with_gemini(group, repo, mode)
             else:
-                summary = self._summarize_with_groq(group, repo)
+                summary = self._summarize_with_groq(group, repo, mode)
 
             summary["start_time"] = self._format_time(group[0].get("date", ""))
             summary["end_time"] = self._format_time(group[-1].get("date", ""))
@@ -75,25 +77,35 @@ class AISummarizer:
 
         return groups
 
-    def _summarize_with_gemini(self, commits: list[dict], repo: str) -> dict:
-        if not self.gemini_key:
-            return self._fallback_summary(commits, repo)
-
-        messages = "\n".join(
-            f"- {c['message'].strip()}" for c in commits
-        )
-
-        prompt = f"""Given these Git commits from repo '{repo}', write ONE concise task description (max 15 words) summarizing what was done.
-
-Commits:
-{messages}
+    def _build_prompt(self, repo: str, messages: str, mode: str) -> str:
+        prompts = {
+            "short": f"Given these Git commits from repo '{repo}', write ONE very concise task description (max 15 words) summarizing what was done.\n\nCommits:\n{messages}",
+            "medium": f"Given these Git commits from repo '{repo}', write a short paragraph (2-3 sentences) describing what was done.\n\nCommits:\n{messages}",
+            "long": f"Given these Git commits from repo '{repo}', write a detailed description of the work done, including technical specifics.\n\nCommits:\n{messages}",
+        }
+        instruction = prompts.get(mode, prompts["short"])
+        return f"""{instruction}
 
 Return JSON: {{"task": "...", "priority": "High/Medium/Low", "status": "Completed/In progress", "productivity": 0.0-1.0}}"""
 
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={self.gemini_key}"
-        payload = {
-            "contents": [{"parts": [{"text": prompt}]}]
+    def _full_summary(self, commits: list[dict], repo: str) -> dict:
+        messages = [c["message"].strip() for c in commits]
+        return {
+            "task": "; ".join(messages),
+            "priority": "Medium",
+            "status": "Completed",
+            "productivity": 0.8,
         }
+
+    def _summarize_with_gemini(self, commits: list[dict], repo: str, mode: str) -> dict:
+        if not self.gemini_key:
+            return self._fallback_summary(commits, repo, mode)
+
+        messages = "\n".join(f"- {c['message'].strip()}" for c in commits)
+        prompt = self._build_prompt(repo, messages, mode)
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={self.gemini_key}"
+        payload = {"contents": [{"parts": [{"text": prompt}]}]}
 
         try:
             resp = requests.post(url, json=payload, timeout=30)
@@ -103,15 +115,14 @@ Return JSON: {{"task": "...", "priority": "High/Medium/Low", "status": "Complete
             cleaned = text.strip().removeprefix("```json").removesuffix("```").strip()
             return json.loads(cleaned)
         except Exception:
-            return self._fallback_summary(commits, repo)
+            return self._fallback_summary(commits, repo, mode)
 
-    def _summarize_with_groq(self, commits: list[dict], repo: str) -> dict:
+    def _summarize_with_groq(self, commits: list[dict], repo: str, mode: str) -> dict:
         if not self.groq_key:
-            return self._fallback_summary(commits, repo)
+            return self._fallback_summary(commits, repo, mode)
 
-        messages = "\n".join(
-            f"- {c['message'].strip()}" for c in commits
-        )
+        messages = "\n".join(f"- {c['message'].strip()}" for c in commits)
+        prompt = self._build_prompt(repo, messages, mode)
 
         url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {
@@ -122,12 +133,7 @@ Return JSON: {{"task": "...", "priority": "High/Medium/Low", "status": "Complete
             "model": self.groq_model,
             "messages": [
                 {"role": "system", "content": "You output only valid JSON and nothing else. No explanations, no markdown."},
-                {"role": "user", "content": f"""Given these Git commits from repo '{repo}', write ONE concise task description (max 15 words) summarizing what was done.
-
-Commits:
-{messages}
-
-Return JSON: {{"task": "...", "priority": "High/Medium/Low", "status": "Completed/In progress", "productivity": 0.0-1.0}}"""}
+                {"role": "user", "content": prompt},
             ],
             "temperature": 0.3,
         }
@@ -140,13 +146,16 @@ Return JSON: {{"task": "...", "priority": "High/Medium/Low", "status": "Complete
             cleaned = text.strip().removeprefix("```json").removesuffix("```").strip()
             return json.loads(cleaned)
         except Exception:
-            return self._fallback_summary(commits, repo)
+            return self._fallback_summary(commits, repo, mode)
 
-    def _fallback_summary(self, commits: list[dict], repo: str) -> dict:
+    def _fallback_summary(self, commits: list[dict], repo: str, mode: str = "short") -> dict:
         messages = [c["message"].strip() for c in commits]
-        task = "; ".join(messages[:3])
-        if len(messages) > 3:
-            task += f" (+{len(messages) - 3} more)"
+        if mode == "full":
+            task = "; ".join(messages)
+        else:
+            task = "; ".join(messages[:3])
+            if len(messages) > 3:
+                task += f" (+{len(messages) - 3} more)"
         return {
             "task": task or f"Worked on {repo}",
             "priority": "Medium",

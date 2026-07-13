@@ -61,6 +61,8 @@ def main():
                         help="Date to generate log for (YYYY-MM-DD, 'today', or 'yesterday')")
     parser.add_argument("--repo", "-r", required=True,
                         help="Repository in format 'owner/repo' (e.g., 'R-veesh/gitCommited')")
+    parser.add_argument("--mode", default=None, choices=["full", "long", "medium", "short"],
+                        help="Summarization mode: full (no AI), short, medium, long")
     args = parser.parse_args()
 
     config = load_config()
@@ -85,6 +87,8 @@ def main():
         print(f"Error fetching commits: {e}")
         sys.exit(1)
 
+    mode = args.mode or defaults.get("summarize_mode", "short")
+
     summarizer = AISummarizer(
         provider=ai_cfg["provider"],
         gemini_key=ai_cfg.get("gemini_api_key", ""),
@@ -97,8 +101,8 @@ def main():
         print("Generating Excel with no task data...")
         summaries = []
     else:
-        print(f"Found {len(commits)} commits. Summarizing with {ai_cfg['provider']}...")
-        summaries = summarizer.summarize(commits, args.repo)
+        print(f"Found {len(commits)} commits. Summarizing with {ai_cfg['provider']} (mode: {mode})...")
+        summaries = summarizer.summarize(commits, args.repo, mode=mode)
 
     date_parts = date_label.split("-")
     output_filename = f"Task_Log_Altitude_{date_parts[2]}_{date_parts[1]}_{date_parts[0]}.xlsx"
