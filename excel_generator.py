@@ -1,3 +1,4 @@
+from pathlib import Path
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
@@ -24,6 +25,16 @@ class ExcelGenerator:
 
     def generate(self, date_str: str, task_summaries: list[dict],
                  repo_commits: dict[str, list[dict]], output_path: str):
+        path = Path(output_path)
+        if path.exists():
+            try:
+                path.unlink()
+            except PermissionError:
+                raise PermissionError(
+                    f"Cannot overwrite '{output_path}' — file is open in another program. "
+                    f"Close it and try again."
+                )
+
         wb = Workbook()
         ws = wb.active
         ws.title = "Task Log"
@@ -77,7 +88,7 @@ class ExcelGenerator:
     def _write_desk_cleanup(self, ws, row: int) -> int:
         ws.cell(row=row, column=self.COLUMNS["B"], value="8.30am").border = self.THIN_BORDER
         ws.cell(row=row, column=self.COLUMNS["C"]).border = self.THIN_BORDER
-        cell = ws.cell(row=row, column=self.COLUMNS["D"], value="Clean the desk ∥ Checked email")
+        cell = ws.cell(row=row, column=self.COLUMNS["D"], value="Clean the desk // Checked email")
         cell.border = self.THIN_BORDER
         for c in range(self.COLUMNS["E"], self.COLUMNS["H"] + 1):
             ws.cell(row=row, column=c).border = self.THIN_BORDER

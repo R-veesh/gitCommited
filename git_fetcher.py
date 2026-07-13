@@ -52,32 +52,6 @@ class GitFetcher:
                     "url": commit_data["html_url"],
                 })
 
-            all_commits.extend(self._fetch_commit_details(repo, [c["sha"] for c in page_data]))
             page += 1
 
         return sorted(all_commits, key=lambda c: c.get("date", ""))
-
-    def _fetch_commit_details(self, repo: str, shas: list[str]) -> list[dict]:
-        details = []
-        for sha in shas:
-            url = f"https://api.github.com/repos/{repo}/commits/{sha}"
-            resp = self.session.get(url)
-            if resp.status_code != 200:
-                continue
-            data = resp.json()
-            details.append({
-                "sha": sha[:7],
-                "files_changed": len(data.get("files", [])),
-                "additions": data.get("stats", {}).get("additions", 0),
-                "deletions": data.get("stats", {}).get("deletions", 0),
-            })
-        return details
-
-    def fetch_recent_commits(self, repo: str, days: int = 1) -> list[dict]:
-        now = datetime.now(timezone.utc)
-        since = now - __import__("datetime").timedelta(days=days)
-        return self.fetch_commits(
-            repo,
-            since=since.isoformat(),
-            until=now.isoformat(),
-        )

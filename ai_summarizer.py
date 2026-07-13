@@ -22,9 +22,29 @@ class AISummarizer:
                 summary = self._summarize_with_gemini(group, repo)
             else:
                 summary = self._summarize_with_groq(group, repo)
+
+            summary["start_time"] = self._format_time(group[0].get("date", ""))
+            summary["end_time"] = self._format_time(group[-1].get("date", ""))
             summaries.append(summary)
 
         return summaries
+
+    def _format_time(self, iso_date: str) -> str:
+        if not iso_date:
+            return "9.00am"
+        from datetime import datetime
+        try:
+            dt = datetime.fromisoformat(iso_date.replace("Z", "+00:00"))
+            hour = dt.hour
+            minute = dt.minute
+            period = "am" if hour < 12 else "pm"
+            if hour == 0:
+                hour = 12
+            elif hour > 12:
+                hour -= 12
+            return f"{hour}.{minute:02d}{period}"
+        except Exception:
+            return "9.00am"
 
     def _group_by_time_proximity(self, commits: list[dict], max_gap_minutes: int = 30) -> list[list[dict]]:
         from datetime import datetime
@@ -63,19 +83,12 @@ class AISummarizer:
             f"- {c['message'].strip()}" for c in commits
         )
 
-        prompt = f"""You are a developer writing daily task logs. Given these Git commits from repo '{repo}', 
-write ONE concise task description that summarizes what was done. Format like a real task log entry.
+        prompt = f"""Given these Git commits from repo '{repo}', write ONE concise task description (max 15 words) summarizing what was done.
 
 Commits:
 {messages}
 
-Return ONLY valid JSON with this structure:
-{{
-  "task": "short task description",
-  "priority": "High/Medium/Low",
-  "status": "Completed/In progress",
-  "productivity": 0.0-1.0
-}}"""
+Return JSON: {{"task": "...", "priority": "High/Medium/Low", "status": "Completed/In progress", "productivity": 0.0-1.0}}"""
 
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={self.gemini_key}"
         payload = {
@@ -100,20 +113,6 @@ Return ONLY valid JSON with this structure:
             f"- {c['message'].strip()}" for c in commits
         )
 
-        prompt = f"""You are a developer writing daily task logs. Given these Git commits from repo '{repo}', 
-write ONE concise task description that summarizes what was done.
-
-Commits:
-{messages}
-
-Return ONLY valid JSON with this structure:
-{{
-  "task": "short task description",
-  "priority": "High/Medium/Low",
-  "status": "Completed/In progress",
-  "productivity": 0.0-1.0
-}}"""
-
         url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {
             "Authorization": f"Bearer {self.groq_key}",
@@ -121,7 +120,15 @@ Return ONLY valid JSON with this structure:
         }
         payload = {
             "model": self.groq_model,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": [
+                {"role": "system", "content": "You output only valid JSON and nothing else. No explanations, no markdown."},
+                {"role": "user", "content": f"""Given these Git commits from repo '{repo}', write ONE concise task description (max 15 words) summarizing what was done.
+
+Commits:
+{messages}
+
+Return JSON: {{"task": "...", "priority": "High/Medium/Low", "status": "Completed/In progress", "productivity": 0.0-1.0}}"""}
+            ],
             "temperature": 0.3,
         }
 
@@ -146,37 +153,3 @@ Return ONLY valid JSON with this structure:
             "status": "Completed",
             "productivity": 0.8,
         }
-
-    def get_start_time(self, commits: list[dict]) -> str:
-        if not commits:
-            return "9.00am"
-        from datetime import datetime
-        try:
-            dt = datetime.fromisoformat(commits[0]["date"].replace("Z", "+00:00"))
-            hour = dt.hour
-            minute = dt.minute
-            period = "am" if hour < 12 else "pm"
-            if hour == 0:
-                hour = 12
-            elif hour > 12:
-                hour -= 12
-            return f"{hour}.{minute:02d}{period}"
-        except Exception:
-            return "9.00am"
-
-    def get_end_time(self, commits: list[dict]) -> str:
-        if not commits:
-            return "5.00pm"
-        from datetime import datetime
-        try:
-            dt = datetime.fromisoformat(commits[-1]["date"].replace("Z", "+00:00"))
-            hour = dt.hour
-            minute = dt.minute
-            period = "am" if hour < 12 else "pm"
-            if hour == 0:
-                hour = 12
-            elif hour > 12:
-                hour -= 12
-            return f"{hour}.{minute:02d}{period}"
-        except Exception:
-            return "5.00pm"

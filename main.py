@@ -100,10 +100,6 @@ def main():
         print(f"Found {len(commits)} commits. Summarizing with {ai_cfg['provider']}...")
         summaries = summarizer.summarize(commits, args.repo)
 
-        for s in summaries:
-            s["start_time"] = summarizer.get_start_time(commits)
-            s["end_time"] = summarizer.get_end_time(commits)
-
     date_parts = date_label.split("-")
     output_filename = f"Task_Log_Altitude_{date_parts[2]}_{date_parts[1]}_{date_parts[0]}.xlsx"
     output_path = Path(__file__).parent / output_filename
