@@ -86,7 +86,21 @@ class AISummarizer:
         instruction = prompts.get(mode, prompts["short"])
         return f"""{instruction}
 
-Return JSON: {{"task": "...", "priority": "High/Medium/Low", "status": "Completed/In progress", "productivity": 0.0-1.0}}"""
+Return ONLY a single JSON object (NOT an array): {{"task": "...", "priority": "High/Medium/Low", "status": "Completed/In progress", "productivity": 0.0-1.0}}"""
+
+    def _normalize_response(self, parsed) -> dict:
+        if isinstance(parsed, dict):
+            return parsed
+        if isinstance(parsed, list) and len(parsed) > 0:
+            tasks = [p.get("task", "") for p in parsed if isinstance(p, dict)]
+            first = parsed[0] if isinstance(parsed[0], dict) else {}
+            return {
+                "task": "; ".join(t for t in tasks if t),
+                "priority": first.get("priority", "Medium"),
+                "status": first.get("status", "Completed"),
+                "productivity": first.get("productivity", 0.8),
+            }
+        return {"task": "", "priority": "Medium", "status": "Completed", "productivity": 0.8}
 
     def _full_summary(self, commits: list[dict], repo: str) -> dict:
         messages = [c["message"].strip() for c in commits]
@@ -113,7 +127,7 @@ Return JSON: {{"task": "...", "priority": "High/Medium/Low", "status": "Complete
             data = resp.json()
             text = data["candidates"][0]["content"]["parts"][0]["text"]
             cleaned = text.strip().removeprefix("```json").removesuffix("```").strip()
-            return json.loads(cleaned)
+            return self._normalize_response(json.loads(cleaned))
         except Exception:
             return self._fallback_summary(commits, repo, mode)
 
@@ -144,7 +158,7 @@ Return JSON: {{"task": "...", "priority": "High/Medium/Low", "status": "Complete
             data = resp.json()
             text = data["choices"][0]["message"]["content"]
             cleaned = text.strip().removeprefix("```json").removesuffix("```").strip()
-            return json.loads(cleaned)
+            return self._normalize_response(json.loads(cleaned))
         except Exception:
             return self._fallback_summary(commits, repo, mode)
 
