@@ -232,13 +232,33 @@ class App:
         filename = f"Task_Log_Altitude_{date_parts[2]}_{date_parts[1]}_{date_parts[0]}.xlsx"
         output_path = str(Path(__file__).parent / filename)
 
+        breaks = [
+            (defaults.get("tea_break_1", "10.30am - 11.00am").split(" - ")[0].strip(),
+             defaults.get("tea_break_1", "10.30am - 11.00am").split(" - ")[1].strip(),
+             "Tea break"),
+            (defaults.get("lunch_break", "1.00pm - 2.00pm").split(" - ")[0].strip(),
+             defaults.get("lunch_break", "1.00pm - 2.00pm").split(" - ")[1].strip(),
+             "Lunch break"),
+            (defaults.get("tea_break_2", "4.00pm - 4.20pm").split(" - ")[0].strip(),
+             defaults.get("tea_break_2", "4.00pm - 4.20pm").split(" - ")[1].strip(),
+             "Tea break"),
+        ]
+
+        merge = Path(output_path).exists()
+        if merge:
+            self.root.after(0, lambda: self._log("Existing file found — merging tasks..."))
+
         self.root.after(0, lambda: self._log(f"Generating Excel: {filename}..."))
-        generator = ExcelGenerator(assigned_by=defaults.get("assigned_by", "Altitude"))
+        generator = ExcelGenerator(
+            assigned_by=defaults.get("assigned_by", "Altitude"),
+            breaks=breaks,
+        )
         generator.generate(
             date_str=date_label,
             task_summaries=summaries,
             repo_commits={repo: commits},
             output_path=output_path,
+            merge_existing=merge,
         )
 
         self.output_path = output_path
@@ -356,6 +376,28 @@ class SettingsWindow:
         self.tz_combo.set(self.config["defaults"].get("timezone", "Asia/Colombo"))
         row += 1
 
+        # === Breaks ===
+        ttk.Label(main, text="Breaks", font=("Segoe UI", 10, "bold")).grid(row=row, column=0, columnspan=2, sticky="w", pady=(5, 5))
+        row += 1
+
+        ttk.Label(main, text="Morning Tea:").grid(row=row, column=0, sticky="w", padx=(0, 10))
+        self.tea1_entry = ttk.Entry(main, width=20)
+        self.tea1_entry.grid(row=row, column=1, sticky="w", pady=2)
+        self.tea1_entry.insert(0, self.config["defaults"].get("tea_break_1", "10.30am - 11.00am"))
+        row += 1
+
+        ttk.Label(main, text="Lunch:").grid(row=row, column=0, sticky="w", padx=(0, 10))
+        self.lunch_entry = ttk.Entry(main, width=20)
+        self.lunch_entry.grid(row=row, column=1, sticky="w", pady=2)
+        self.lunch_entry.insert(0, self.config["defaults"].get("lunch_break", "1.00pm - 2.00pm"))
+        row += 1
+
+        ttk.Label(main, text="Evening Tea:").grid(row=row, column=0, sticky="w", padx=(0, 10))
+        self.tea2_entry = ttk.Entry(main, width=20)
+        self.tea2_entry.grid(row=row, column=1, sticky="w", pady=2)
+        self.tea2_entry.insert(0, self.config["defaults"].get("tea_break_2", "4.00pm - 4.20pm"))
+        row += 1
+
         # === Save / Cancel ===
         btn_frame = ttk.Frame(main)
         btn_frame.grid(row=row, column=0, columnspan=3, pady=(15, 0))
@@ -379,6 +421,9 @@ class SettingsWindow:
         self.config["defaults"]["assigned_by"] = self.assigned_by.get().strip()
         self.config["defaults"]["summarize_mode"] = self.mode_combo.get()
         self.config["defaults"]["timezone"] = self.tz_combo.get().strip()
+        self.config["defaults"]["tea_break_1"] = self.tea1_entry.get().strip()
+        self.config["defaults"]["lunch_break"] = self.lunch_entry.get().strip()
+        self.config["defaults"]["tea_break_2"] = self.tea2_entry.get().strip()
 
         if not self.config["github"]["token"]:
             messagebox.showerror("Error", "GitHub token is required", parent=self.win)

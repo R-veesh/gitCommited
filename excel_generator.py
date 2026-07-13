@@ -20,13 +20,23 @@ class ExcelGenerator:
         bottom=Side(style="thin"),
     )
 
-    def __init__(self, assigned_by: str = "Altitude"):
+    def __init__(self, assigned_by: str = "Altitude", breaks: list[tuple[str, str, str]] = None):
         self.assigned_by = assigned_by
+        self.breaks = breaks or [
+            ("10.30am", "11.00am", "Tea break"),
+            ("1.00pm", "2.00pm", "Lunch break"),
+            ("4.00pm", "4.20pm", "Tea break"),
+        ]
 
     def generate(self, date_str: str, task_summaries: list[dict],
-                 repo_commits: dict[str, list[dict]], output_path: str):
+                 repo_commits: dict[str, list[dict]], output_path: str, merge_existing: bool = False):
         path = Path(output_path)
-        if path.exists():
+
+        if merge_existing and path.exists():
+            existing = self._load_existing_tasks(path)
+            all_tasks = existing + task_summaries
+            all_tasks.sort(key=lambda t: t.get("start_time", "9.00am"))
+            task_summaries = all_tasks
             try:
                 path.unlink()
             except PermissionError:
@@ -34,6 +44,15 @@ class ExcelGenerator:
                     f"Cannot overwrite '{output_path}' — file is open in another program. "
                     f"Close it and try again."
                 )
+        else:
+            if path.exists():
+                try:
+                    path.unlink()
+                except PermissionError:
+                    raise PermissionError(
+                        f"Cannot overwrite '{output_path}' — file is open in another program. "
+                        f"Close it and try again."
+                    )
 
         wb = Workbook()
         ws = wb.active
@@ -50,6 +69,7 @@ class ExcelGenerator:
         row = self._write_shift_start(ws, row)
         row = self._write_desk_cleanup(ws, row)
         row = self._write_day_plan(ws, row)
+        row = self._write_break_rows(ws, row)
         row = self._write_tasks_header(ws, row)
         row = self._write_task_rows(ws, row, task_summaries, repo_commits)
         row = self._write_overall_productivity(ws, row, task_summaries)
@@ -59,6 +79,32 @@ class ExcelGenerator:
 
         wb.save(output_path)
         return output_path
+
+    def _load_existing_tasks(self, path: Path) -> list[dict]:
+        from openpyxl import load_workbook
+        wb = load_workbook(path)
+        ws = wb.active
+        tasks = []
+        in_task_section = False
+        for row in ws.iter_rows(min_row=1, max_row=ws.max_row, values_only=True):
+            vals = [str(v) if v is not None else "" for v in row]
+            col_d = vals[3] if len(vals) > 3 else ""
+            col_b = vals[1] if len(vals) > 1 else ""
+            if "Tasks completed by myself" in col_d:
+                in_task_section = True
+                continue
+            if "Overall Productivity" in col_b:
+                break
+            if in_task_section and col_b and (len(vals) > 3 and vals[3]):
+                tasks.append({
+                    "start_time": vals[1] if len(vals) > 1 else "",
+                    "end_time": vals[2] if len(vals) > 2 else "",
+                    "task": vals[3] if len(vals) > 3 else "",
+                    "priority": vals[4] if len(vals) > 4 and vals[4] else "Medium",
+                    "status": vals[6] if len(vals) > 6 and vals[6] else "Completed",
+                    "productivity": float(vals[7]) if len(vals) > 7 and vals[7] else 0.8,
+                })
+        return tasks
 
     def _write_date_header(self, ws, row: int, date_str: str) -> int:
         cell = ws.cell(row=row, column=self.COLUMNS["B"], value=date_str)
@@ -102,6 +148,17 @@ class ExcelGenerator:
         for c in range(self.COLUMNS["E"], self.COLUMNS["H"] + 1):
             ws.cell(row=row, column=c).border = self.THIN_BORDER
         return row + 1
+
+    def _write_break_rows(self, ws, row: int) -> int:
+        for start, end, label in self.breaks:
+            ws.cell(row=row, column=self.COLUMNS["B"], value=start).border = self.THIN_BORDER
+            ws.cell(row=row, column=self.COLUMNS["C"], value=end).border = self.THIN_BORDER
+            cell = ws.cell(row=row, column=self.COLUMNS["D"], value=label)
+            cell.border = self.THIN_BORDER
+            for c in range(self.COLUMNS["E"], self.COLUMNS["H"] + 1):
+                ws.cell(row=row, column=c).border = self.THIN_BORDER
+            row += 1
+        return row
 
     def _write_tasks_header(self, ws, row: int) -> int:
         headers = ["", "", "Tasks completed by myself",

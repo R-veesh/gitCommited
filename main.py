@@ -112,12 +112,29 @@ def main():
 
     print(f"Generating Excel: {output_filename}...")
 
-    generator = ExcelGenerator(assigned_by=defaults.get("assigned_by", "Altitude"))
+    break_configs = [
+        ("tea_break_1", "10.30am - 11.00am", "Tea break"),
+        ("lunch_break", "1.00pm - 2.00pm", "Lunch break"),
+        ("tea_break_2", "4.00pm - 4.20pm", "Tea break"),
+    ]
+    breaks = []
+    for key, default, label in break_configs:
+        val = defaults.get(key, default)
+        parts = val.split(" - ")
+        if len(parts) == 2:
+            breaks.append((parts[0].strip(), parts[1].strip(), label))
+
+    generator = ExcelGenerator(
+        assigned_by=defaults.get("assigned_by", "Altitude"),
+        breaks=breaks,
+    )
+    merge = Path(str(output_path)).exists()
     generator.generate(
         date_str=date_label,
         task_summaries=summaries,
         repo_commits={args.repo: commits},
         output_path=str(output_path),
+        merge_existing=merge,
     )
 
     print(f"Done! Output: {output_path}")
