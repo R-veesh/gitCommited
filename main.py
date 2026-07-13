@@ -88,12 +88,14 @@ def main():
         sys.exit(1)
 
     mode = args.mode or defaults.get("summarize_mode", "short")
+    tz = defaults.get("timezone", "Asia/Colombo")
 
     summarizer = AISummarizer(
         provider=ai_cfg["provider"],
         gemini_key=ai_cfg.get("gemini_api_key", ""),
         groq_key=ai_cfg.get("groq_api_key", ""),
         groq_model=ai_cfg.get("groq_model", "llama-3.1-8b-instant"),
+        timezone=tz,
     )
 
     if not commits:

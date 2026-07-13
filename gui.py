@@ -210,11 +210,13 @@ class App:
         commits = fetcher.fetch_commits(repo, since=since, until=until)
         self.root.after(0, lambda: self._log(f"Found {len(commits)} commits"))
 
+        tz = defaults.get("timezone", "Asia/Colombo")
         summarizer = AISummarizer(
             provider=ai_cfg["provider"],
             gemini_key=ai_cfg.get("gemini_api_key", ""),
             groq_key=ai_cfg.get("groq_api_key", ""),
             groq_model=ai_cfg.get("groq_model", "llama-3.1-8b-instant"),
+            timezone=tz,
         )
 
         if commits:
@@ -344,6 +346,16 @@ class SettingsWindow:
         self.mode_combo.set(self.config["defaults"].get("summarize_mode", "short"))
         row += 1
 
+        ttk.Label(main, text="Timezone:").grid(row=row, column=0, sticky="w", padx=(0, 10))
+        self.tz_combo = ttk.Combobox(main, values=[
+            "Asia/Colombo", "Asia/Kolkata", "Asia/Dubai",
+            "Asia/Singapore", "Asia/Shanghai", "UTC",
+            "America/New_York", "Europe/London",
+        ], width=15, state="normal")
+        self.tz_combo.grid(row=row, column=1, sticky="w", pady=2)
+        self.tz_combo.set(self.config["defaults"].get("timezone", "Asia/Colombo"))
+        row += 1
+
         # === Save / Cancel ===
         btn_frame = ttk.Frame(main)
         btn_frame.grid(row=row, column=0, columnspan=3, pady=(15, 0))
@@ -366,6 +378,7 @@ class SettingsWindow:
         self.config["ai"]["gemini_api_key"] = self.gemini_key.get().strip()
         self.config["defaults"]["assigned_by"] = self.assigned_by.get().strip()
         self.config["defaults"]["summarize_mode"] = self.mode_combo.get()
+        self.config["defaults"]["timezone"] = self.tz_combo.get().strip()
 
         if not self.config["github"]["token"]:
             messagebox.showerror("Error", "GitHub token is required", parent=self.win)

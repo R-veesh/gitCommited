@@ -4,11 +4,12 @@ import requests
 
 
 class AISummarizer:
-    def __init__(self, provider: str, gemini_key: str = "", groq_key: str = "", groq_model: str = "llama-3.1-8b-instant"):
+    def __init__(self, provider: str, gemini_key: str = "", groq_key: str = "", groq_model: str = "llama-3.1-8b-instant", timezone: str = "Asia/Colombo"):
         self.provider = provider
         self.gemini_key = gemini_key
         self.groq_key = groq_key
         self.groq_model = groq_model
+        self.timezone = timezone
 
     def summarize(self, commits: list[dict], repo: str, mode: str = "short") -> list[dict]:
         if not commits:
@@ -34,11 +35,14 @@ class AISummarizer:
     def _format_time(self, iso_date: str) -> str:
         if not iso_date:
             return "9.00am"
-        from datetime import datetime
         try:
-            dt = datetime.fromisoformat(iso_date.replace("Z", "+00:00"))
-            hour = dt.hour
-            minute = dt.minute
+            from datetime import datetime
+            from zoneinfo import ZoneInfo
+            dt_utc = datetime.fromisoformat(iso_date.replace("Z", "+00:00"))
+            local_tz = ZoneInfo(self.timezone)
+            dt_local = dt_utc.astimezone(local_tz)
+            hour = dt_local.hour
+            minute = dt_local.minute
             period = "am" if hour < 12 else "pm"
             if hour == 0:
                 hour = 12
