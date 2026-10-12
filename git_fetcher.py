@@ -14,6 +14,30 @@ class GitFetcher:
         })
 
     def fetch_commits(self, repo: str, since: str, until: str) -> list[dict]:
+    def fetch_branches(self, repo: str) -> list[str]:
+        url = f"https://api.github.com/repos/{repo}/branches"
+        params = {"per_page": 100}
+        branches = []
+        page = 1
+
+        while True:
+            params["page"] = page
+            resp = self.session.get(url, params=params, timeout=15)
+
+            if resp.status_code == 404:
+                raise ValueError(f"Repository '{repo}' not found or no access.")
+            resp.raise_for_status()
+
+            page_data = resp.json()
+            if not page_data:
+                break
+
+            branches.extend(b["name"] for b in page_data)
+            page += 1
+
+        return branches
+
+    def fetch_commits(self, repo: str, since: str, until: str, branch: str = None) -> list[dict]:
         url = f"https://api.github.com/repos/{repo}/commits"
         params = {
             "author": self.username,
@@ -21,6 +45,8 @@ class GitFetcher:
             "until": until,
             "per_page": 100,
         }
+        if branch:
+            params["sha"] = branch
 
         all_commits = []
         page = 1

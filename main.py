@@ -63,6 +63,8 @@ def main():
                         help="Repository in format 'owner/repo' (e.g., 'R-veesh/gitCommited')")
     parser.add_argument("--mode", default=None, choices=["full", "long", "medium", "short"],
                         help="Summarization mode: full (no AI), short, medium, long")
+    parser.add_argument("--branch", "-b", default=None,
+                        help="Branch to fetch commits from (default: repo's default branch)")
     args = parser.parse_args()
 
     config = load_config()
@@ -77,6 +79,7 @@ def main():
     fetcher = GitFetcher(token=github_cfg["token"], username=github_cfg["username"])
     try:
         commits = fetcher.fetch_commits(args.repo, since=since, until=until)
+        commits = fetcher.fetch_commits(args.repo, since=since, until=until, branch=args.branch)
     except ValueError as e:
         print(f"Error: {e}")
         sys.exit(1)

@@ -24,6 +24,7 @@ class App:
         self.root.resizable(False, False)
 
         self.repos = []
+        self.branches = []
         self.output_path = None
 
         self._build_ui()
@@ -60,11 +61,25 @@ class App:
         self.refresh_btn = ttk.Button(repo_frame, text="Refresh", command=self._load_repos)
         self.refresh_btn.pack(side="right", padx=(5, 0))
 
+        self.repo_combo.bind("<<ComboboxSelected>>", self._on_repo_selected)
+
+        # === Branch selection ===
+        ttk.Label(main, text="Branch:", font=("Segoe UI", 10, "bold")).grid(row=3, column=0, sticky="w", pady=(0, 5))
+
+        branch_frame = ttk.Frame(main)
+        branch_frame.grid(row=4, column=0, columnspan=3, sticky="ew", pady=(0, 10))
+
+        self.branch_var = tk.StringVar()
+        self.branch_combo = ttk.Combobox(branch_frame, textvariable=self.branch_var, width=60, state="readonly")
+        self.branch_combo.pack(side="left", fill="x", expand=True)
+
         # === Summarize mode ===
         ttk.Label(main, text="Summarize Mode:", font=("Segoe UI", 10, "bold")).grid(row=3, column=0, sticky="w", pady=(0, 5))
+        ttk.Label(main, text="Summarize Mode:", font=("Segoe UI", 10, "bold")).grid(row=5, column=0, sticky="w", pady=(0, 5))
 
         mode_frame = ttk.Frame(main)
         mode_frame.grid(row=4, column=0, columnspan=3, sticky="w", pady=(0, 8))
+        mode_frame.grid(row=6, column=0, columnspan=3, sticky="w", pady=(0, 8))
 
         self.mode_var = tk.StringVar(value=self.config.get("defaults", {}).get("summarize_mode", "short"))
         modes = [
@@ -81,12 +96,15 @@ class App:
 
         self.tooltip_label = ttk.Label(main, text="", foreground="gray")
         self.tooltip_label.grid(row=5, column=0, columnspan=3, sticky="w", pady=(0, 3))
+        self.tooltip_label.grid(row=7, column=0, columnspan=3, sticky="w", pady=(0, 3))
 
         # === Date selection ===
         ttk.Label(main, text="Date:", font=("Segoe UI", 10, "bold")).grid(row=6, column=0, sticky="w", pady=(0, 5))
+        ttk.Label(main, text="Date:", font=("Segoe UI", 10, "bold")).grid(row=8, column=0, sticky="w", pady=(0, 5))
 
         date_frame = ttk.Frame(main)
         date_frame.grid(row=7, column=0, columnspan=3, sticky="w", pady=(0, 10))
+        date_frame.grid(row=9, column=0, columnspan=3, sticky="w", pady=(0, 10))
 
         self.date_var = tk.StringVar(value="today")
         ttk.Radiobutton(date_frame, text="Today", variable=self.date_var, value="today").pack(side="left", padx=(0, 10))
@@ -99,21 +117,27 @@ class App:
         # === Generate button ===
         self.generate_btn = ttk.Button(main, text="Generate Task Log", command=self._generate)
         self.generate_btn.grid(row=8, column=0, sticky="w", pady=(5, 10))
+        self.generate_btn.grid(row=10, column=0, sticky="w", pady=(5, 10))
 
         # === Status text ===
         ttk.Label(main, text="Status:", font=("Segoe UI", 10, "bold")).grid(row=9, column=0, sticky="w")
+        ttk.Label(main, text="Status:", font=("Segoe UI", 10, "bold")).grid(row=11, column=0, sticky="w")
 
         self.status_text = tk.Text(main, height=10, width=80, state="disabled", wrap="word", font=("Consolas", 9))
         self.status_text.grid(row=10, column=0, columnspan=3, sticky="nsew", pady=(3, 5))
         main.rowconfigure(10, weight=1)
+        self.status_text.grid(row=12, column=0, columnspan=3, sticky="nsew", pady=(3, 5))
+        main.rowconfigure(12, weight=1)
 
         scrollbar = ttk.Scrollbar(main, orient="vertical", command=self.status_text.yview)
         scrollbar.grid(row=10, column=3, sticky="ns", pady=(3, 5))
+        scrollbar.grid(row=12, column=3, sticky="ns", pady=(3, 5))
         self.status_text.configure(yscrollcommand=scrollbar.set)
 
         # === Open Excel button ===
         self.open_btn = ttk.Button(main, text="Open Excel File", command=self._open_excel, state="disabled")
         self.open_btn.grid(row=11, column=0, sticky="w")
+        self.open_btn.grid(row=13, column=0, sticky="w")
 
     def _show_tooltip(self, event, text):
         self.tooltip_label.configure(text=text)
@@ -149,8 +173,46 @@ class App:
         self.repo_combo["values"] = self.repos
         if self.repos:
             self.repo_combo.set(self.repos[0])
+            self._load_branches(self.repos[0])
         self.refresh_btn.configure(state="normal")
         self._log(f"Loaded {len(self.repos)} repositories")
+
+    def _on_repo_selected(self, event=None):
+        repo = self.repo_var.get().strip()
+        if repo:
+            self._load_branches(repo)
+
+    def _load_branches(self, repo: str):
+        self.branch_combo.configure(state="disabled")
+        self.branch_combo.set("")
+        self.branches = []
+        self._log(f"Loading branches for {repo}...")
+
+        def fetch():
+            try:
+                token = self.config["github"]["token"]
+                fetcher = GitFetcher(token=token, username=self.config["github"]["username"])
+                branch_list = fetcher.fetch_branches(repo)
+                self.root.after(0, lambda: self._update_branch_list(branch_list))
+            except Exception as e:
+                self.root.after(0, lambda: self._log(f"Failed to load branches: {e}"))
+                self.root.after(0, lambda: self.branch_combo.configure(state="readonly"))
+
+        threading.Thread(target=fetch, daemon=True).start()
+
+    def _update_branch_list(self, branch_list: list[str]):
+        self.branches = branch_list
+        self.branch_combo["values"] = self.branches
+        self.branch_combo.configure(state="readonly")
+        if self.branches:
+            # Default to 'main' or 'master' if present, else first branch
+            for default in ("main", "master"):
+                if default in self.branches:
+                    self.branch_combo.set(default)
+                    break
+            else:
+                self.branch_combo.set(self.branches[0])
+        self._log(f"Loaded {len(self.branches)} branches")
 
     def _get_date(self) -> str:
         val = self.date_var.get()
@@ -167,6 +229,8 @@ class App:
             messagebox.showerror("Error", "Please select a repository")
             return
 
+        branch = self.branch_var.get().strip() or None
+
         date_val = self._get_date()
         if date_val not in ("today", "yesterday") and not date_val:
             messagebox.showerror("Error", "Please enter a valid date")
@@ -176,10 +240,13 @@ class App:
         self.open_btn.configure(state="disabled")
         mode = self.mode_var.get()
         self._log(f"\n--- Generating task log for {repo} ({date_val}) [mode: {mode}] ---")
+        branch_label = f" branch: {branch}" if branch else ""
+        self._log(f"\n--- Generating task log for {repo} ({date_val}){branch_label} [mode: {mode}] ---")
 
         def run():
             try:
                 self._run_pipeline(repo, date_val, mode)
+                self._run_pipeline(repo, date_val, mode, branch)
             except Exception as e:
                 self.root.after(0, lambda: self._log(f"ERROR: {e}"))
                 self.root.after(0, lambda: messagebox.showerror("Error", str(e)))
@@ -189,6 +256,7 @@ class App:
         threading.Thread(target=run, daemon=True).start()
 
     def _run_pipeline(self, repo: str, date_val: str, mode: str):
+    def _run_pipeline(self, repo: str, date_val: str, mode: str, branch: str = None):
         config = self.config
         github_cfg = config["github"]
         ai_cfg = config["ai"]
@@ -208,6 +276,7 @@ class App:
         self.root.after(0, lambda: self._log("Fetching commits..."))
         fetcher = GitFetcher(token=github_cfg["token"], username=github_cfg["username"])
         commits = fetcher.fetch_commits(repo, since=since, until=until)
+        commits = fetcher.fetch_commits(repo, since=since, until=until, branch=branch)
         self.root.after(0, lambda: self._log(f"Found {len(commits)} commits"))
 
         tz = defaults.get("timezone", "Asia/Colombo")
