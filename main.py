@@ -10,8 +10,14 @@ from ai_summarizer import AISummarizer
 from excel_generator import ExcelGenerator
 
 
+if getattr(sys, "frozen", False):
+    APP_DIR = Path(sys.executable).resolve().parent
+else:
+    APP_DIR = Path(__file__).resolve().parent
+
+
 def load_config() -> dict:
-    config_path = Path(__file__).parent / "config.json"
+    config_path = APP_DIR / "config.json"
     if not config_path.exists():
         print("Error: config.json not found.")
         print("Copy config.template.json to config.json and fill in your settings.")
@@ -111,7 +117,7 @@ def main():
 
     date_parts = date_label.split("-")
     output_filename = f"Task_Log_Altitude_{date_parts[2]}_{date_parts[1]}_{date_parts[0]}.xlsx"
-    output_path = Path(__file__).parent / output_filename
+    output_path = APP_DIR / output_filename
 
     print(f"Generating Excel: {output_filename}...")
 

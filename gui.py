@@ -3,6 +3,7 @@ from tkinter import ttk, messagebox
 import threading
 import json
 import os
+import sys
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 import requests
@@ -11,8 +12,12 @@ from git_fetcher import GitFetcher
 from ai_summarizer import AISummarizer
 from excel_generator import ExcelGenerator
 
+if getattr(sys, "frozen", False):
+    APP_DIR = Path(sys.executable).resolve().parent
+else:
+    APP_DIR = Path(__file__).resolve().parent
 
-CONFIG_PATH = Path(__file__).parent / "config.json"
+CONFIG_PATH = APP_DIR / "config.json"
 
 
 class App:
@@ -20,7 +25,7 @@ class App:
         self.config = self._load_config()
         self.root = tk.Tk()
         self.root.title("Daily Task Log Generator")
-        self.root.geometry("720x560")
+        self.root.geometry("720x620")
         self.root.resizable(False, False)
 
         self.repos = []
@@ -31,6 +36,24 @@ class App:
         self._load_repos()
 
     def _load_config(self):
+        if not CONFIG_PATH.exists():
+            template_path = APP_DIR / "config.template.json"
+            if template_path.exists():
+                with open(template_path) as f:
+                    return json.load(f)
+            return {
+                "github": {"username": "", "token": ""},
+                "ai": {"provider": "gemini", "gemini_api_key": "", "groq_api_key": "", "groq_model": "llama-3.1-8b-instant"},
+                "defaults": {
+                    "assigned_by": "Altitude",
+                    "shift_start": "8.30am",
+                    "tea_break_1": "10.30am - 11.00am",
+                    "lunch_break": "1.00pm - 2.00pm",
+                    "tea_break_2": "4.00pm - 4.20pm",
+                    "summarize_mode": "short",
+                    "timezone": "Asia/Colombo",
+                },
+            }
         with open(CONFIG_PATH) as f:
             return json.load(f)
 
@@ -74,12 +97,10 @@ class App:
         self.branch_combo.pack(side="left", fill="x", expand=True)
 
         # === Summarize mode ===
-        ttk.Label(main, text="Summarize Mode:", font=("Segoe UI", 10, "bold")).grid(row=3, column=0, sticky="w", pady=(0, 5))
         ttk.Label(main, text="Summarize Mode:", font=("Segoe UI", 10, "bold")).grid(row=5, column=0, sticky="w", pady=(0, 5))
 
         mode_frame = ttk.Frame(main)
-        mode_frame.grid(row=4, column=0, columnspan=3, sticky="w", pady=(0, 8))
-        mode_frame.grid(row=6, column=0, columnspan=3, sticky="w", pady=(0, 8))
+        mode_frame.grid(row=6, column=0, columnspan=3, sticky="w", pady=(0, 4))
 
         self.mode_var = tk.StringVar(value=self.config.get("defaults", {}).get("summarize_mode", "short"))
         modes = [
@@ -95,15 +116,12 @@ class App:
             rb.bind("<Leave>", self._hide_tooltip)
 
         self.tooltip_label = ttk.Label(main, text="", foreground="gray")
-        self.tooltip_label.grid(row=5, column=0, columnspan=3, sticky="w", pady=(0, 3))
-        self.tooltip_label.grid(row=7, column=0, columnspan=3, sticky="w", pady=(0, 3))
+        self.tooltip_label.grid(row=7, column=0, columnspan=3, sticky="w", pady=(0, 6))
 
         # === Date selection ===
-        ttk.Label(main, text="Date:", font=("Segoe UI", 10, "bold")).grid(row=6, column=0, sticky="w", pady=(0, 5))
         ttk.Label(main, text="Date:", font=("Segoe UI", 10, "bold")).grid(row=8, column=0, sticky="w", pady=(0, 5))
 
         date_frame = ttk.Frame(main)
-        date_frame.grid(row=7, column=0, columnspan=3, sticky="w", pady=(0, 10))
         date_frame.grid(row=9, column=0, columnspan=3, sticky="w", pady=(0, 10))
 
         self.date_var = tk.StringVar(value="today")
@@ -116,27 +134,21 @@ class App:
 
         # === Generate button ===
         self.generate_btn = ttk.Button(main, text="Generate Task Log", command=self._generate)
-        self.generate_btn.grid(row=8, column=0, sticky="w", pady=(5, 10))
         self.generate_btn.grid(row=10, column=0, sticky="w", pady=(5, 10))
 
         # === Status text ===
-        ttk.Label(main, text="Status:", font=("Segoe UI", 10, "bold")).grid(row=9, column=0, sticky="w")
         ttk.Label(main, text="Status:", font=("Segoe UI", 10, "bold")).grid(row=11, column=0, sticky="w")
 
         self.status_text = tk.Text(main, height=10, width=80, state="disabled", wrap="word", font=("Consolas", 9))
-        self.status_text.grid(row=10, column=0, columnspan=3, sticky="nsew", pady=(3, 5))
-        main.rowconfigure(10, weight=1)
         self.status_text.grid(row=12, column=0, columnspan=3, sticky="nsew", pady=(3, 5))
         main.rowconfigure(12, weight=1)
 
         scrollbar = ttk.Scrollbar(main, orient="vertical", command=self.status_text.yview)
-        scrollbar.grid(row=10, column=3, sticky="ns", pady=(3, 5))
         scrollbar.grid(row=12, column=3, sticky="ns", pady=(3, 5))
         self.status_text.configure(yscrollcommand=scrollbar.set)
 
         # === Open Excel button ===
         self.open_btn = ttk.Button(main, text="Open Excel File", command=self._open_excel, state="disabled")
-        self.open_btn.grid(row=11, column=0, sticky="w")
         self.open_btn.grid(row=13, column=0, sticky="w")
 
     def _show_tooltip(self, event, text):
@@ -299,7 +311,7 @@ class App:
 
         date_parts = date_label.split("-")
         filename = f"Task_Log_Altitude_{date_parts[2]}_{date_parts[1]}_{date_parts[0]}.xlsx"
-        output_path = str(Path(__file__).parent / filename)
+        output_path = str(APP_DIR / filename)
 
         breaks = [
             (defaults.get("tea_break_1", "10.30am - 11.00am").split(" - ")[0].strip(),
