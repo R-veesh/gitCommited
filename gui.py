@@ -165,7 +165,9 @@ class App:
                 self.repos = [r["full_name"] for r in resp.json()]
                 self.root.after(0, self._update_repo_list)
             except Exception as e:
-                self.root.after(0, lambda: self._log(f"Failed to load repos: {e}"))
+                err_msg = str(e)
+                self.root.after(0, lambda msg=err_msg: self._log(f"Failed to load repos: {msg}"))
+                self.root.after(0, lambda: self.refresh_btn.configure(state="normal"))
 
         threading.Thread(target=fetch, daemon=True).start()
 
@@ -193,9 +195,10 @@ class App:
                 token = self.config["github"]["token"]
                 fetcher = GitFetcher(token=token, username=self.config["github"]["username"])
                 branch_list = fetcher.fetch_branches(repo)
-                self.root.after(0, lambda: self._update_branch_list(branch_list))
+                self.root.after(0, lambda bl=branch_list: self._update_branch_list(bl))
             except Exception as e:
-                self.root.after(0, lambda: self._log(f"Failed to load branches: {e}"))
+                err_msg = str(e)
+                self.root.after(0, lambda msg=err_msg: self._log(f"Failed to load branches: {msg}"))
                 self.root.after(0, lambda: self.branch_combo.configure(state="readonly"))
 
         threading.Thread(target=fetch, daemon=True).start()
@@ -239,23 +242,21 @@ class App:
         self.generate_btn.configure(state="disabled")
         self.open_btn.configure(state="disabled")
         mode = self.mode_var.get()
-        self._log(f"\n--- Generating task log for {repo} ({date_val}) [mode: {mode}] ---")
         branch_label = f" branch: {branch}" if branch else ""
         self._log(f"\n--- Generating task log for {repo} ({date_val}){branch_label} [mode: {mode}] ---")
 
         def run():
             try:
-                self._run_pipeline(repo, date_val, mode)
                 self._run_pipeline(repo, date_val, mode, branch)
             except Exception as e:
-                self.root.after(0, lambda: self._log(f"ERROR: {e}"))
-                self.root.after(0, lambda: messagebox.showerror("Error", str(e)))
+                err_msg = str(e)
+                self.root.after(0, lambda msg=err_msg: self._log(f"ERROR: {msg}"))
+                self.root.after(0, lambda msg=err_msg: messagebox.showerror("Error", msg))
             finally:
                 self.root.after(0, lambda: self.generate_btn.configure(state="normal"))
 
         threading.Thread(target=run, daemon=True).start()
 
-    def _run_pipeline(self, repo: str, date_val: str, mode: str):
     def _run_pipeline(self, repo: str, date_val: str, mode: str, branch: str = None):
         config = self.config
         github_cfg = config["github"]
@@ -275,7 +276,6 @@ class App:
 
         self.root.after(0, lambda: self._log("Fetching commits..."))
         fetcher = GitFetcher(token=github_cfg["token"], username=github_cfg["username"])
-        commits = fetcher.fetch_commits(repo, since=since, until=until)
         commits = fetcher.fetch_commits(repo, since=since, until=until, branch=branch)
         self.root.after(0, lambda: self._log(f"Found {len(commits)} commits"))
 

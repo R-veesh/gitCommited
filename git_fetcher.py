@@ -12,8 +12,6 @@ class GitFetcher:
             "Authorization": f"Bearer {token}",
             "Accept": "application/vnd.github.v3+json",
         })
-
-    def fetch_commits(self, repo: str, since: str, until: str) -> list[dict]:
     def fetch_branches(self, repo: str) -> list[str]:
         url = f"https://api.github.com/repos/{repo}/branches"
         params = {"per_page": 100}
